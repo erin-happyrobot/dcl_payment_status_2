@@ -1,13 +1,16 @@
 from contextlib import asynccontextmanager
 import logging
-import requests 
 from requests.adapters import HTTPAdapter
 from datetime import timedelta, datetime, timezone
 import os
 import pandas as pd
 import dotenv
-
-
+import json
+from typing import List, Dict, Any, Optional
+from fastapi import HTTPException
+import boto3
+from botocore.exceptions import NoCredentialsError, ClientError
+import requests 
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI
@@ -63,9 +66,61 @@ def perform_scheduled_action() -> None:
     if total_calls_past_12_hours_failed_percentage > 0.25:
         logger.info("[scheduler] Total calls past 12 hours failed percentage is greater than 25%")
         logger.info(f"[scheduler] Sending email to {os.getenv('EMAIL_TO')}")
-        # send_email( [os.getenv('EMAIL_TO')], "Payment Status Audit Happy Robot", f"Total calls past 12 hours failed percentage is greater than 25%. We are seeing a rate of {total_calls_past_12_hours_failed_percentage*100}% of calls failing to find a load id.")
+        send_email( [os.getenv('EMAIL_TO')], "Payment Status Audit Happy Robot", f"Total calls past 12 hours failed percentage is greater than 25%. We are seeing a rate of {total_calls_past_12_hours_failed_percentage*100}% of calls failing to find a load id.")
     else:
         logger.info("[scheduler] Total calls past 12 hours failed percentage is less than 25%")
+        send_email( [os.getenv('EMAIL_TO')], "Payment Status Audit Happy Robot", f"Total calls past 12 hours failed percentage is less than 25%. We are seeing a rate of {total_calls_past_12_hours_failed_percentage*100}% of calls failing to find a load id.")
+
+
+def send_email(
+    email_addresses: List[str] = [],
+    subject: str = "",
+    body: str = "",
+) -> dict:
+    try:
+
+        payload = {
+            "orgId": os.getenv("DCL_ORG_ID"),
+            "from": os.getenv("SENDER_EMAIL"),
+            "to": email_addresses,
+            "subject": subject,
+            "body": body,
+        }
+        aws_region = os.getenv("AWS_REGION") or "us-east-2"
+        lambda_function_name = os.getenv("LAMBDA_FUNCTION_NAME")
+        if not lambda_function_name:
+            logger.error("Missing LAMBDA_FUNCTION_NAME environment variable")
+            raise HTTPException(status_code=500, detail="Missing LAMBDA_FUNCTION_NAME env var")
+
+        invoke_lambda(
+            payload=payload,
+        )
+        return {
+            "success": True,
+            "message": "Email sent successfully",
+            "email_addresses": email_addresses,
+        }
+    except Exception as e:
+        logger.error(f"Error sending email: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500, detail=f"Error sending email: {str(e)}"
+        )
+
+
+def invoke_lambda(payload: dict) -> dict:
+    try:
+        client = boto3.client("lambda", region_name=os.getenv("AWS_REGION"))
+        resp = client.invoke(
+            FunctionName=os.getenv("LAMBDA_FUNCTION_NAME"),  # or full ARN
+            InvocationType="RequestResponse",
+            Payload=json.dumps(payload).encode("utf-8"),
+        )
+        with resp["Payload"] as stream:
+            return json.loads(stream.read().decode("utf-8"))
+    except NoCredentialsError:
+        raise HTTPException(status_code=500, detail="Missing AWS credentials. Set AWS_ACCESS_KEY_ID/SECRET (and SESSION_TOKEN if temp) and AWS_REGION.")
+    except ClientError as e:
+        raise HTTPException(status_code=500, detail=f"Error invoking Lambda: {e}")
 
 
 
