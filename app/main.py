@@ -70,7 +70,7 @@ def perform_scheduled_action() -> None:
     if total_calls_past_12_hours_failed_percentage > 0.25:
         logger.info("[scheduler] Total calls past 12 hours failed percentage is greater than 25%")
         logger.info(f"[scheduler] Sending email to {os.getenv('EMAIL_TO')}")
-        send_email( [os.getenv('EMAIL_TO'), "erin@happyrobot.ai"], "McLeod Alert - Payment Status Audit Happy Robot", f"Total calls past 12 hours failed percentage is greater than 25%. We are seeing a rate of {total_calls_past_12_hours_failed_percentage*100}% of calls failing to find a load id.")
+        send_email( ["erin@happyrobot.ai", "graham.cason@directconnectlogistix.com", "podriscoll@directconnectlogistix.com"], "McLeod Alert - Payment Status Audit Happy Robot", f"Total calls past 12 hours failed percentage is greater than 25%. We are seeing a rate of {total_calls_past_12_hours_failed_percentage*100}% of calls failing to find a load id.")
     else:
         logger.info("[scheduler] Total calls past 12 hours failed percentage is less than 25%")
         send_email( ["erin@happyrobot.ai"], "All Good - Payment Status Audit Happy Robot", f"Total calls past 12 hours failed percentage is less than 25%. We are seeing a rate of {total_calls_past_12_hours_failed_percentage*100}% of calls failing to find a load id.")
