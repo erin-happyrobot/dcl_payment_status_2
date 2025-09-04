@@ -38,7 +38,7 @@ def perform_scheduled_action() -> None:
     params = {
         "limit": 100,
         "use_case_id": os.getenv('PAYMENT_STATUS_USE_CASE_ID'),
-         "start": start_utc.isoformat(timespec="seconds").replace("+00:00", "Z")
+        "start": start_utc.isoformat(timespec="seconds").replace("+00:00", "Z")
     }
 
     response = session.get(url, headers=headers, params=params, timeout=(3.05, 20))
