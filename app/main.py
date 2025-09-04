@@ -49,11 +49,15 @@ def perform_scheduled_action() -> None:
         print(f"[scheduler] Run {run['id']} - {run['status']}")
 
 
-    print(type(response.json()))
-    print(response.json()[0])
+    # print(type(response.json()))
+    # print(response.json()[0])
     
     calls_data = response.json()
     df_total = pd.DataFrame(calls_data)
+    if (len(df_total) == 0):
+        logger.info("[scheduler] No runs found past 12 hours")
+        send_email( ["erin@happyrobot.ai"], "No Runs Found - Payment Status Audit Happy Robot", "No runs found past 12 hours")
+        return
     total_calls_past_12_hours = len(df_total)
     df = pd.json_normalize(calls_data)
     print(df.columns)
