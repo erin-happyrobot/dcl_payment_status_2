@@ -61,7 +61,7 @@ def perform_scheduled_action() -> None:
     total_calls_past_12_hours = len(df_total)
     df = pd.json_normalize(calls_data)
     print(df.columns)
-    total_calls_past_12_hours_failed = len(df[df['data.01988326-54c7-7f8c-a055-6b5ea45d6cc8.response.classification'] == 'did_not_find_load'])
+    total_calls_past_12_hours_failed = len(df[df['data.01990824-79a3-78fd-a338-c55450cd8803.response.classification'] == 'did_not_find_load'])
     total_calls_past_12_hours_failed_percentage = total_calls_past_12_hours_failed / total_calls_past_12_hours
     logger.info(f"[scheduler] Total calls past 12 hours: {total_calls_past_12_hours}")
     logger.info(f"[scheduler] Total calls past 12 hours failed: {total_calls_past_12_hours_failed}")
