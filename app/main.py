@@ -93,7 +93,7 @@ def perform_scheduled_action() -> None:
         logger.info("[scheduler] Total calls past 12 hours failed percentage is greater than 25%")
         logger.info(f"[scheduler] Sending email to {os.getenv('EMAIL_TO')}")
         if _should_send("alert", now):
-            send_email(["erin@happyrobot.ai"], "McLeod Alert - Payment Status Audit Happy Robot", f"Total calls past 12 hours failed percentage is greater than 25%. We are seeing a rate of {total_calls_past_12_hours_failed_percentage*100}% of calls failing to find a load id.")
+            send_email(["erin@happyrobot.ai", "graham.cason@directconnectlogistix.com", "podriscoll@directconnectlogistix.com"], "McLeod Alert - Payment Status Audit Happy Robot", f"Total calls past 12 hours failed percentage is greater than 25%. We are seeing a rate of {total_calls_past_12_hours_failed_percentage*100}% of calls failing to find a load id.")
     else:
         logger.info("[scheduler] Total calls past 12 hours failed percentage is less than 25%")
         if _should_send("ok", now):
@@ -194,7 +194,7 @@ async def lifespan(app: FastAPI):  # type: ignore[override]
 
     logger.info(f"Starting scheduler in PID {os.getpid()}")
     # Resolve schedule interval from env with safe fallback and log it
-    schedule_hours_raw = os.getenv("SCHEDULE_HOURS", "0.05")
+    schedule_hours_raw = os.getenv("SCHEDULE_HOURS", "12")
     try:
         schedule_hours = float(schedule_hours_raw)
     except Exception:
