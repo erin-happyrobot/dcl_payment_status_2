@@ -6,7 +6,7 @@ import os
 import pandas as pd
 import dotenv
 import json
-from typing import List, Dict, Any, Optional
+from typing import List
 from fastapi import HTTPException
 import boto3
 from botocore.exceptions import NoCredentialsError, ClientError
@@ -91,7 +91,7 @@ def send_email(
             "subject": subject,
             "body": body,
         }
-        aws_region = os.getenv("AWS_REGION") or "us-east-2"
+        # region is read in invoke_lambda
         lambda_function_name = os.getenv("LAMBDA_FUNCTION_NAME")
         if not lambda_function_name:
             logger.error("Missing LAMBDA_FUNCTION_NAME environment variable")
@@ -131,8 +131,18 @@ def invoke_lambda(payload: dict) -> dict:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):  # type: ignore[override]
-    # Schedule the job to run every 12 hours. It will also schedule the first run
-    # for 12 hours from process start. Uncomment the next line to run once at startup.
+    # Gate scheduling so only one instance runs jobs
+    run_scheduler_env = os.getenv("RUN_SCHEDULER", "true").lower()
+    run_scheduler = run_scheduler_env in ("1", "true", "yes", "on")
+    if not run_scheduler:
+        logger.info("RUN_SCHEDULER is disabled; skipping job scheduling for this process")
+        try:
+            yield
+        finally:
+            pass
+        return
+
+    logger.info(f"Starting scheduler in PID {os.getpid()}")
     # perform_scheduled_action()
     scheduler.add_job(
         perform_scheduled_action,
