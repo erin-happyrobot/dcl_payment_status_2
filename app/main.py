@@ -10,6 +10,8 @@ from typing import List
 from fastapi import HTTPException
 import boto3
 from botocore.exceptions import NoCredentialsError, ClientError
+from botocore.config import Config
+import uuid
 import requests 
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -108,6 +110,9 @@ def send_email(
             "subject": subject,
             "body": body,
         }
+        # Add idempotency/debug metadata
+        payload["requestId"] = str(uuid.uuid4())
+        payload["requestedAt"] = datetime.now(timezone.utc).isoformat()
         # region is read in invoke_lambda
         lambda_function_name = os.getenv("LAMBDA_FUNCTION_NAME")
         if not lambda_function_name:
@@ -131,12 +136,20 @@ def send_email(
 
 def invoke_lambda(payload: dict) -> dict:
     try:
-        client = boto3.client("lambda", region_name=os.getenv("AWS_REGION"))
+        # Disable client-side retries to avoid duplicate invokes
+        client = boto3.client(
+            "lambda",
+            region_name=os.getenv("AWS_REGION"),
+            config=Config(retries={"max_attempts": 0, "mode": "standard"}, connect_timeout=3, read_timeout=10),
+        )
         resp = client.invoke(
             FunctionName=os.getenv("LAMBDA_FUNCTION_NAME"),  # or full ARN
             InvocationType="RequestResponse",
             Payload=json.dumps(payload).encode("utf-8"),
         )
+        status_code = resp.get("StatusCode")
+        function_error = resp.get("FunctionError")
+        logger.info(f"Lambda invoke StatusCode={status_code} FunctionError={function_error}")
         with resp["Payload"] as stream:
             return json.loads(stream.read().decode("utf-8"))
     except NoCredentialsError:
