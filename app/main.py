@@ -25,8 +25,23 @@ dotenv.load_dotenv()
 scheduler = AsyncIOScheduler(timezone="UTC")
 
 
+# Cooldown to prevent duplicate emails within a short window
+EMAIL_COOLDOWN_SECONDS = int(os.getenv("EMAIL_COOLDOWN_SECONDS", "180"))
+LAST_SENT_AT = {}
+
+def _should_send(kind: str, now: datetime) -> bool:
+    last = LAST_SENT_AT.get(kind)
+    if last is not None:
+        elapsed = (now - last).total_seconds()
+        if elapsed < EMAIL_COOLDOWN_SECONDS:
+            logger.info(f"[scheduler] Cooldown active for '{kind}' ({int(elapsed)}s < {EMAIL_COOLDOWN_SECONDS}s); skipping email")
+            return False
+    LAST_SENT_AT[kind] = now
+    return True
+
 def perform_scheduled_action() -> None:
-    print(f"[scheduler] Running 12-hour task at {datetime.now(timezone.utc).isoformat()}")
+    now = datetime.now(timezone.utc)
+    print(f"[scheduler] Running 12-hour task at {now.isoformat()}")
     session = requests.Session()
     session.mount('https://', HTTPAdapter(max_retries=3))
     url = "https://platform.happyrobot.ai/api/v1/runs"
@@ -56,7 +71,8 @@ def perform_scheduled_action() -> None:
     df_total = pd.DataFrame(calls_data)
     if (len(df_total) == 0):
         logger.info("[scheduler] No runs found past 12 hours")
-        send_email( ["erin@happyrobot.ai"], "No Runs Found - Payment Status Audit Happy Robot", "No runs found past 12 hours")
+        if _should_send("no_runs", now):
+            send_email(["erin@happyrobot.ai"], "No Runs Found - Payment Status Audit Happy Robot", "No runs found past 12 hours")
         return
     total_calls_past_12_hours = len(df_total)
     df = pd.json_normalize(calls_data)
@@ -70,11 +86,12 @@ def perform_scheduled_action() -> None:
     if total_calls_past_12_hours_failed_percentage > 0.25:
         logger.info("[scheduler] Total calls past 12 hours failed percentage is greater than 25%")
         logger.info(f"[scheduler] Sending email to {os.getenv('EMAIL_TO')}")
-        # send_email( ["erin@happyrobot.ai", "graham.cason@directconnectlogistix.com", "podriscoll@directconnectlogistix.com"], "McLeod Alert - Payment Status Audit Happy Robot", f"Total calls past 12 hours failed percentage is greater than 25%. We are seeing a rate of {total_calls_past_12_hours_failed_percentage*100}% of calls failing to find a load id.")
-        send_email( ["erin@happyrobot.ai"], "McLeod Alert - Payment Status Audit Happy Robot", f"Total calls past 12 hours failed percentage is greater than 25%. We are seeing a rate of {total_calls_past_12_hours_failed_percentage*100}% of calls failing to find a load id.")
+        if _should_send("alert", now):
+            send_email(["erin@happyrobot.ai"], "McLeod Alert - Payment Status Audit Happy Robot", f"Total calls past 12 hours failed percentage is greater than 25%. We are seeing a rate of {total_calls_past_12_hours_failed_percentage*100}% of calls failing to find a load id.")
     else:
         logger.info("[scheduler] Total calls past 12 hours failed percentage is less than 25%")
-        send_email( ["erin@happyrobot.ai"], "All Good - Payment Status Audit Happy Robot", f"Total calls past 12 hours failed percentage is less than 25%. We are seeing a rate of {total_calls_past_12_hours_failed_percentage*100}% of calls failing to find a load id.")
+        if _should_send("ok", now):
+            send_email(["erin@happyrobot.ai"], "All Good - Payment Status Audit Happy Robot", f"Total calls past 12 hours failed percentage is less than 25%. We are seeing a rate of {total_calls_past_12_hours_failed_percentage*100}% of calls failing to find a load id.")
 
 
 def send_email(
@@ -143,11 +160,20 @@ async def lifespan(app: FastAPI):  # type: ignore[override]
         return
 
     logger.info(f"Starting scheduler in PID {os.getpid()}")
+    # Resolve schedule interval from env with safe fallback and log it
+    schedule_hours_raw = os.getenv("SCHEDULE_HOURS", "0.05")
+    try:
+        schedule_hours = float(schedule_hours_raw)
+    except Exception:
+        schedule_hours = 12.0
+        logger.warning(f"Invalid SCHEDULE_HOURS='{schedule_hours_raw}', defaulting to {schedule_hours}h")
+    logger.info(f"Scheduling job every {schedule_hours} hours (SCHEDULE_HOURS='{schedule_hours_raw}')")
+
     # perform_scheduled_action()
     scheduler.add_job(
         perform_scheduled_action,
         trigger="interval",
-        hours=0.05,
+        hours=schedule_hours,
         id="twelve_hour_job",
         replace_existing=True,
         max_instances=1,
