@@ -31,6 +31,10 @@ scheduler = AsyncIOScheduler(timezone="UTC")
 EMAIL_COOLDOWN_SECONDS = int(os.getenv("EMAIL_COOLDOWN_SECONDS", "180"))
 LAST_SENT_AT = {}
 
+# Lambda invocation cooldown (prevents calling Lambda more than once in window)
+LAMBDA_COOLDOWN_SECONDS = int(os.getenv("LAMBDA_COOLDOWN_SECONDS", "300"))
+LAST_LAMBDA_INVOKE_AT = None
+
 def _should_send(kind: str, now: datetime) -> bool:
     last = LAST_SENT_AT.get(kind)
     if last is not None:
@@ -119,9 +123,25 @@ def send_email(
             logger.error("Missing LAMBDA_FUNCTION_NAME environment variable")
             raise HTTPException(status_code=500, detail="Missing LAMBDA_FUNCTION_NAME env var")
 
+        # Lambda global cooldown
+        global LAST_LAMBDA_INVOKE_AT
+        now_ts = datetime.now(timezone.utc)
+        if LAST_LAMBDA_INVOKE_AT is not None:
+            elapsed = (now_ts - LAST_LAMBDA_INVOKE_AT).total_seconds()
+            if elapsed < LAMBDA_COOLDOWN_SECONDS:
+                logger.info(
+                    f"[scheduler] Lambda cooldown active ({int(elapsed)}s < {LAMBDA_COOLDOWN_SECONDS}s); skipping invoke"
+                )
+                return {
+                    "success": True,
+                    "message": "Skipped due to lambda cooldown",
+                    "email_addresses": email_addresses,
+                }
+
         invoke_lambda(
             payload=payload,
         )
+        LAST_LAMBDA_INVOKE_AT = now_ts
         return {
             "success": True,
             "message": "Email sent successfully",
